@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "StudyVoice - AI Tutor for Canvas",
+  "version": "1.0.0",
+  "description": "Voice-powered AI tutoring that connects to your Canvas LMS courses",
+  "permissions": ["sidePanel", "storage", "activeTab"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "StudyVoice"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.instructure.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

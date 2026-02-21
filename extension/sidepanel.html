@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyVoice</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 100%; height: 100vh; overflow: hidden; background: #0a0a0f; }
+    iframe { width: 100%; height: 100%; border: none; }
+    .setup {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      padding: 24px;
+      color: #e5e5e5;
+      font-family: system-ui, -apple-system, sans-serif;
+      gap: 16px;
+    }
+    .setup h2 { font-size: 18px; font-weight: 600; }
+    .setup p { font-size: 13px; color: #999; text-align: center; }
+    .setup input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #1a1a24;
+      color: #e5e5e5;
+      font-size: 14px;
+    }
+    .setup button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      background: #4ade80;
+      color: #0a0a0f;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .setup button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="setup" id="setup">
+    <h2>StudyVoice</h2>
+    <p>Enter your Canvas access token to get started. You can generate one from Canvas Settings.</p>
+    <input type="password" id="tokenInput" placeholder="Canvas Access Token" />
+    <button id="saveBtn">Save & Continue</button>
+  </div>
+  <iframe id="tutorFrame" style="display: none;"></iframe>
+
+  <script>
+    // Update this after deploying
+    const APP_URL = 'https://your-app.vercel.app';
+
+    const params = new URLSearchParams(window.location.search);
+    const materialId = params.get('materialId');
+
+    chrome.storage.local.get(['canvasToken'], (result) => {
+      if (result.canvasToken) {
+        showTutor(materialId);
+      }
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const token = document.getElementById('tokenInput').value.trim();
+      if (token) {
+        chrome.storage.local.set({ canvasToken: token }, () => {
+          showTutor(materialId);
+        });
+      }
+    });
+
+    function showTutor(materialId) {
+      document.getElementById('setup').style.display = 'none';
+      const frame = document.getElementById('tutorFrame');
+      frame.style.display = 'block';
+      if (materialId) {
+        frame.src = `${APP_URL}/tutor?id=${materialId}`;
+      } else {
+        frame.src = APP_URL;
+      }
+    }
+  </script>
+</body>
+</html>
