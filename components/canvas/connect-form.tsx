@@ -1,17 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Id } from "@/convex/_generated/dataModel";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Globe, KeyRound, ArrowRight, Loader2 } from "lucide-react";
 
 interface ConnectFormProps {
-  onConnected: (connectionId: Id<"canvasConnections">, domain: string, token: string) => void;
+  onConnected: (domain: string, token: string) => void;
 }
 
 export function ConnectForm({ onConnected }: ConnectFormProps) {
@@ -19,7 +22,6 @@ export function ConnectForm({ onConnected }: ConnectFormProps) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const saveConnection = useMutation(api.canvasConnections.save);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,14 +33,27 @@ export function ConnectForm({ onConnected }: ConnectFormProps) {
         .replace(/^https?:\/\//, "")
         .replace(/\/+$/, "");
 
-      const connectionId = await saveConnection({
-        domain: cleanDomain,
-        token,
+      // Validate the token via our API route
+      const res = await fetch("/api/canvas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "validate",
+          domain: cleanDomain,
+          token,
+        }),
       });
 
-      onConnected(connectionId, cleanDomain, token);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Invalid token or domain");
+      }
+
+      onConnected(cleanDomain, token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save connection");
+      setError(
+        err instanceof Error ? err.message : "Failed to connect"
+      );
     } finally {
       setLoading(false);
     }
@@ -47,15 +62,21 @@ export function ConnectForm({ onConnected }: ConnectFormProps) {
   return (
     <Card className="border-border bg-card">
       <CardHeader>
-        <CardTitle className="text-card-foreground">Connect to Canvas</CardTitle>
+        <CardTitle className="text-card-foreground">
+          Connect to Canvas
+        </CardTitle>
         <CardDescription>
-          Enter your Canvas LMS domain and personal access token to browse your courses.
+          Enter your Canvas LMS domain and personal access token to browse
+          your courses.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="domain" className="flex items-center gap-2 text-card-foreground">
+            <Label
+              htmlFor="domain"
+              className="flex items-center gap-2 text-card-foreground"
+            >
               <Globe className="h-4 w-4 text-primary" />
               Canvas Domain
             </Label>
@@ -73,7 +94,10 @@ export function ConnectForm({ onConnected }: ConnectFormProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="token" className="flex items-center gap-2 text-card-foreground">
+            <Label
+              htmlFor="token"
+              className="flex items-center gap-2 text-card-foreground"
+            >
               <KeyRound className="h-4 w-4 text-primary" />
               Access Token
             </Label>
@@ -91,11 +115,13 @@ export function ConnectForm({ onConnected }: ConnectFormProps) {
             </p>
           </div>
 
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <Button type="submit" disabled={loading || !domain || !token} className="w-full">
+          <Button
+            type="submit"
+            disabled={loading || !domain || !token}
+            className="w-full"
+          >
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (

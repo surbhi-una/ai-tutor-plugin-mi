@@ -1,9 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useAction, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -41,11 +38,17 @@ interface Module {
   items: ModuleItem[];
 }
 
+export interface MaterialData {
+  title: string;
+  content: string;
+  courseName: string;
+  courseId: string;
+}
+
 interface CourseBrowserProps {
   domain: string;
   token: string;
-  connectionId: Id<"canvasConnections">;
-  onMaterialReady: (materialId: Id<"materials">) => void;
+  onMaterialReady: (material: MaterialData) => void;
 }
 
 function getItemIcon(type: string) {
@@ -66,7 +69,6 @@ function getItemIcon(type: string) {
 export function CourseBrowser({
   domain,
   token,
-  connectionId,
   onMaterialReady,
 }: CourseBrowserProps) {
   const [courses, setCourses] = useState<Course[] | null>(null);
@@ -76,19 +78,29 @@ export function CourseBrowser({
   const [fetchingContent, setFetchingContent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCourses = useAction(api.canvas.fetchCourses);
-  const fetchModules = useAction(api.canvas.fetchModules);
-  const fetchContent = useAction(api.canvas.fetchContent);
-  const createMaterial = useMutation(api.materials.create);
+  async function canvasApi(payload: Record<string, unknown>) {
+    const res = await fetch("/api/canvas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...payload, domain, token }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Canvas API error");
+    }
+    return data;
+  }
 
   async function loadCourses() {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchCourses({ domain, token });
-      setCourses(result);
+      const data = await canvasApi({ action: "courses" });
+      setCourses(data.courses);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch courses");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch courses"
+      );
     } finally {
       setLoading(false);
     }
@@ -99,14 +111,15 @@ export function CourseBrowser({
     setError(null);
     setSelectedCourse(course);
     try {
-      const result = await fetchModules({
-        domain,
-        token,
+      const data = await canvasApi({
+        action: "modules",
         courseId: String(course.id),
       });
-      setModules(result);
+      setModules(data.modules);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch modules");
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch modules"
+      );
     } finally {
       setLoading(false);
     }
@@ -116,25 +129,20 @@ export function CourseBrowser({
     setFetchingContent(item.id);
     setError(null);
     try {
-      const result = await fetchContent({
-        domain,
-        token,
+      const data = await canvasApi({
+        action: "content",
         courseId: String(selectedCourse!.id),
         itemType: item.type,
         itemId: item.contentId ? String(item.contentId) : undefined,
         pageUrl: item.pageUrl ?? undefined,
       });
 
-      const materialId = await createMaterial({
-        content: result.content,
-        source: "canvas",
-        title: result.title,
-        courseId: String(selectedCourse!.id),
+      onMaterialReady({
+        title: data.title,
+        content: data.content,
         courseName: selectedCourse!.name,
-        canvasConnectionId: connectionId,
+        courseId: String(selectedCourse!.id),
       });
-
-      onMaterialReady(materialId);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch content"
@@ -144,7 +152,7 @@ export function CourseBrowser({
     }
   }
 
-  // Initial state -- show "Load Courses" button
+  // Initial state
   if (!courses) {
     return (
       <Card className="border-border bg-card">
@@ -155,7 +163,9 @@ export function CourseBrowser({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+          {error && (
+            <p className="mb-3 text-sm text-destructive">{error}</p>
+          )}
           <Button onClick={loadCourses} disabled={loading} className="w-full">
             {loading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -193,7 +203,9 @@ export function CourseBrowser({
           </div>
         </CardHeader>
         <CardContent>
-          {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+          {error && (
+            <p className="mb-3 text-sm text-destructive">{error}</p>
+          )}
           <ScrollArea className="h-80">
             <div className="flex flex-col gap-3">
               {modules.map((mod) => (
@@ -220,7 +232,9 @@ export function CourseBrowser({
                           ) : (
                             getItemIcon(item.type)
                           )}
-                          <span className="flex-1 truncate">{item.title}</span>
+                          <span className="flex-1 truncate">
+                            {item.title}
+                          </span>
                           <ChevronRight className="h-3 w-3 text-muted-foreground" />
                         </button>
                       ))}
@@ -258,7 +272,9 @@ export function CourseBrowser({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
+        {error && (
+          <p className="mb-3 text-sm text-destructive">{error}</p>
+        )}
         <ScrollArea className="h-80">
           <div className="flex flex-col gap-1">
             {courses.map((course) => (

@@ -1,48 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { ConnectForm } from "@/components/canvas/connect-form";
-import { CourseBrowser } from "@/components/canvas/course-browser";
+import { CourseBrowser, type MaterialData } from "@/components/canvas/course-browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, BookOpen, Zap, ArrowRight, Loader2 } from "lucide-react";
+import { Mic, BookOpen, Zap, ArrowRight } from "lucide-react";
 
 export default function Home() {
   const router = useRouter();
   const [connection, setConnection] = useState<{
-    id: Id<"canvasConnections">;
     domain: string;
     token: string;
   } | null>(null);
 
-  // Paste fallback state
   const [pasteContent, setPasteContent] = useState("");
-  const [pasting, setPasting] = useState(false);
-  const createMaterial = useMutation(api.materials.create);
 
-  function handleMaterialReady(materialId: Id<"materials">) {
-    router.push(`/tutor?id=${materialId}`);
+  function handleMaterialReady(material: MaterialData) {
+    // Store material in sessionStorage and navigate
+    sessionStorage.setItem("studyvoice_material", JSON.stringify(material));
+    router.push("/tutor");
   }
 
-  async function handlePaste() {
+  function handlePaste() {
     if (!pasteContent.trim()) return;
-    setPasting(true);
-    try {
-      const materialId = await createMaterial({
-        content: pasteContent.trim(),
-        source: "paste",
+    sessionStorage.setItem(
+      "studyvoice_material",
+      JSON.stringify({
         title: "Pasted Content",
-      });
-      router.push(`/tutor?id=${materialId}`);
-    } finally {
-      setPasting(false);
-    }
+        content: pasteContent.trim(),
+        courseName: "Manual Input",
+        courseId: "",
+      })
+    );
+    router.push("/tutor");
   }
 
   return (
@@ -58,11 +52,9 @@ export default function Home() {
               StudyVoice
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-muted-foreground">
-              Powered by VAPI + Speechmatics + Convex
-            </span>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            Powered by VAPI + Speechmatics + Convex
+          </span>
         </div>
       </header>
 
@@ -103,15 +95,14 @@ export default function Home() {
             <TabsContent value="canvas" className="mt-4">
               {!connection ? (
                 <ConnectForm
-                  onConnected={(id, domain, token) =>
-                    setConnection({ id, domain, token })
+                  onConnected={(domain, token) =>
+                    setConnection({ domain, token })
                   }
                 />
               ) : (
                 <CourseBrowser
                   domain={connection.domain}
                   token={connection.token}
-                  connectionId={connection.id}
                   onMaterialReady={handleMaterialReady}
                 />
               )}
@@ -133,15 +124,11 @@ export default function Home() {
                   />
                   <Button
                     onClick={handlePaste}
-                    disabled={pasting || !pasteContent.trim()}
+                    disabled={!pasteContent.trim()}
                     className="w-full"
                   >
-                    {pasting ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowRight className="mr-2 h-4 w-4" />
-                    )}
-                    {pasting ? "Saving..." : "Start Tutoring"}
+                    <ArrowRight className="mr-2 h-4 w-4" />
+                    Start Tutoring
                   </Button>
                 </CardContent>
               </Card>
@@ -181,7 +168,9 @@ export default function Home() {
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold">
                   {item.step}
                 </div>
-                <h3 className="font-semibold text-card-foreground">{item.title}</h3>
+                <h3 className="font-semibold text-card-foreground">
+                  {item.title}
+                </h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   {item.desc}
                 </p>
