@@ -2,8 +2,6 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { ConnectForm } from "@/components/canvas/connect-form";
 import { CourseBrowser, type MaterialData } from "@/components/canvas/course-browser";
 import { Button } from "@/components/ui/button";
@@ -14,10 +12,9 @@ import { Mic, BookOpen, Zap, ArrowRight } from "lucide-react";
 
 const STORAGE_KEY = "studyvoice_canvas_connection";
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const createMaterial = useMutation(api.materials.create);
   const [connection, setConnection] = useState<{
     domain: string;
     token: string;
@@ -49,39 +46,33 @@ export default function Home() {
   const [pasteContent, setPasteContent] = useState("");
   const [isNavigating, setIsNavigating] = useState(false);
 
-  async function handleMaterialReady(material: MaterialData) {
+  function handleMaterialReady(material: MaterialData) {
     if (isNavigating) return;
     setIsNavigating(true);
-    try {
-      const materialId = await createMaterial({
-        content: material.content,
-        source: "canvas",
+    sessionStorage.setItem(
+      "studyvoice_material",
+      JSON.stringify({
         title: material.title,
-        courseId: material.courseId || undefined,
-        courseName: material.courseName || undefined,
-      });
-      router.push(`/tutor?id=${materialId}`);
-    } catch (err) {
-      console.error("Failed to create material:", err);
-      setIsNavigating(false);
-    }
+        content: material.content,
+        courseName: material.courseName || "Canvas Course",
+        courseId: material.courseId,
+      })
+    );
+    router.push(`/tutor`);
   }
 
-  async function handlePaste() {
+  function handlePaste() {
     if (!pasteContent.trim() || isNavigating) return;
     setIsNavigating(true);
-    try {
-      const materialId = await createMaterial({
-        content: pasteContent.trim(),
-        source: "paste",
+    sessionStorage.setItem(
+      "studyvoice_material",
+      JSON.stringify({
         title: "Pasted Content",
+        content: pasteContent.trim(),
         courseName: "Manual Input",
-      });
-      router.push(`/tutor?id=${materialId}`);
-    } catch (err) {
-      console.error("Failed to create material:", err);
-      setIsNavigating(false);
-    }
+      })
+    );
+    router.push(`/tutor`);
   }
 
   return (
@@ -229,5 +220,13 @@ export default function Home() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><p className="text-muted-foreground">Loading...</p></div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
