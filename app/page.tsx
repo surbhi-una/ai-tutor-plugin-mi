@@ -2,10 +2,11 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { ConnectForm } from "@/components/canvas/connect-form";
-import { CourseBrowser, type MaterialData } from "@/components/canvas/course-browser";
+import {
+  CourseBrowser,
+  type MaterialData,
+} from "@/components/canvas/course-browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,80 +14,78 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mic, BookOpen, Zap, ArrowRight } from "lucide-react";
 
 const STORAGE_KEY = "studyvoice_canvas_connection";
+const MATERIAL_KEY = "studyvoice_material";
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const createMaterial = useMutation(api.materials.create);
   const [connection, setConnection] = useState<{
     domain: string;
     token: string;
   } | null>(null);
 
-  // Restore connection when returning with courseId (e.g. from Back on tutor page)
   const courseIdFromUrl = searchParams.get("courseId");
+
   useEffect(() => {
     if (courseIdFromUrl && !connection) {
       try {
         const stored = sessionStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const { domain, token } = JSON.parse(stored).data;
+          const { domain, token } = JSON.parse(stored);
           if (domain && token) setConnection({ domain, token });
         }
       } catch {
-        // Ignore invalid stored data
+        /* ignore */
       }
     }
-  }, [courseIdFromUrl]);
+  }, [courseIdFromUrl, connection]);
 
-  // Persist connection when user connects
   useEffect(() => {
     if (connection) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data: connection }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(connection));
     }
   }, [connection]);
 
   const [pasteContent, setPasteContent] = useState("");
   const [isNavigating, setIsNavigating] = useState(false);
 
-  async function handleMaterialReady(material: MaterialData) {
+  function handleMaterialReady(material: MaterialData) {
     if (isNavigating) return;
     setIsNavigating(true);
-    try {
-      const materialId = await createMaterial({
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(
+      MATERIAL_KEY,
+      JSON.stringify({
+        id,
         content: material.content,
         source: "canvas",
         title: material.title,
         courseId: material.courseId || undefined,
         courseName: material.courseName || undefined,
-      });
-      router.push(`/tutor?id=${materialId}`);
-    } catch (err) {
-      console.error("Failed to create material:", err);
-      setIsNavigating(false);
-    }
+      })
+    );
+    router.push(`/tutor?id=${id}`);
   }
 
-  async function handlePaste() {
+  function handlePaste() {
     if (!pasteContent.trim() || isNavigating) return;
     setIsNavigating(true);
-    try {
-      const materialId = await createMaterial({
+    const id = crypto.randomUUID();
+    sessionStorage.setItem(
+      MATERIAL_KEY,
+      JSON.stringify({
+        id,
         content: pasteContent.trim(),
         source: "paste",
         title: "Pasted Content",
         courseName: "Manual Input",
-      });
-      router.push(`/tutor?id=${materialId}`);
-    } catch (err) {
-      console.error("Failed to create material:", err);
-      setIsNavigating(false);
-    }
+      })
+    );
+    router.push(`/tutor?id=${id}`);
   }
 
   return (
     <main className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
@@ -103,7 +102,6 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero */}
       <section className="mx-auto max-w-5xl px-6 py-16">
         <div className="flex flex-col items-center text-center gap-4 mb-12">
           <h1 className="text-4xl font-bold tracking-tight text-foreground text-balance md:text-5xl">
@@ -129,7 +127,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Connection Flow */}
         <div className="mx-auto max-w-lg">
           <Tabs defaultValue="canvas">
             <TabsList className="grid w-full grid-cols-2 bg-secondary">
@@ -186,7 +183,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How it works */}
       <section className="border-t border-border bg-card">
         <div className="mx-auto max-w-5xl px-6 py-12">
           <h2 className="text-center text-xl font-semibold text-card-foreground mb-8">
@@ -229,5 +225,19 @@ export default function Home() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="text-muted-foreground">Loading...</div>
+        </div>
+      }
+    >
+      <HomeContent />
+    </Suspense>
   );
 }
