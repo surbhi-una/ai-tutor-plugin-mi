@@ -23,14 +23,30 @@ RULES:
 - Keep responses concise (2-3 sentences for voice)
 - Start by greeting the student and asking what they'd like to learn about from this material`;
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object") {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.error === "string") return obj.error;
+    if (typeof obj.reason === "string") return obj.reason;
+    const str = JSON.stringify(err);
+    if (str !== "{}") return str;
+  }
+  return "Voice connection failed. Check your API key, microphone permissions, and browser console for details.";
+}
+
 export function useVapiSession() {
   const [state, setState] = useState<VoiceState>("idle");
   const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const vapiRef = useRef<ReturnType<typeof import("@vapi-ai/web").default.prototype.constructor> | null>(null);
 
   const createSession = useMutation(api.sessions.create);
   const endSession = useMutation(api.sessions.end);
   const sendMessage = useMutation(api.messages.send);
+  const syncFromConversation = useMutation(api.messages.syncFromConversation);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -53,6 +69,7 @@ export function useVapiSession() {
       ttsProvider: string
     ) => {
       setState("connecting");
+        setError(null);
 
       try {
         // Create session in Convex
@@ -90,30 +107,48 @@ export function useVapiSession() {
           messages: [{ role: "system", content: systemPrompt }],
         };
 
-        // Build voice config
+        // Build voice config with fallback to prevent "Meeting has ended" when TTS times out
+        const openaiFallback = { provider: "openai" as const, voiceId: "shimmer" };
         let voiceConfig: Record<string, unknown>;
-        if (ttsProvider === "minimax") {
+        if (ttsProvider === "openai") {
+          voiceConfig = {
+            provider: "openai",
+            voiceId: "shimmer",
+          };
+        } else if (ttsProvider === "minimax") {
           voiceConfig = {
             provider: "minimax",
             voiceId: "Wise_Woman",
             model: "speech-02-turbo",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         } else if (ttsProvider === "playht") {
           voiceConfig = {
             provider: "playht",
             voiceId: "jennifer",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         } else {
           voiceConfig = {
             provider: "11labs",
             voiceId: "sarah",
             model: "eleven_turbo_v2_5",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         }
 
         // Wire up events
+        const firstMessageText =
+          "Hi there! I'm your AI tutor. I've reviewed your course material. What would you like to learn about today?";
+
         vapi.on("call-start", () => {
           setState("listening");
+          // Add assistant's first message to transcript so user sees the greeting
+          sendMessage({
+            sessionId: sid,
+            role: "assistant",
+            text: firstMessageText,
+          });
         });
 
         vapi.on("call-end", () => {
@@ -129,18 +164,46 @@ export function useVapiSession() {
         });
 
         vapi.on("message", (msg: Record<string, unknown>) => {
-          // Log transcript messages to Convex
-          if (msg.type === "transcript" && msg.transcriptType === "final" && msg.transcript) {
-            sendMessage({
-              sessionId: sid,
-              role: msg.role as string ?? "user",
-              text: msg.transcript as string,
-            });
+          // Transcript: real-time speech-to-text
+          if (msg.type === "transcript") {
+            const text =
+              (msg.transcript as string) ??
+              (msg.message as string) ??
+              (typeof msg.content === "string" ? msg.content : null);
+            const role = (msg.role as string) ?? "user";
+            const isFinal = msg.transcriptType === "final" || msg.transcriptType === undefined;
+
+            if (text && isFinal) {
+              sendMessage({
+                sessionId: sid,
+                role: role === "assistant" || role === "user" ? role : "user",
+                text,
+              });
+            }
+            return;
+          }
+
+          // Conversation-update: full history (fallback when transcript events are sparse)
+          if (msg.type === "conversation-update") {
+            const rawMessages = msg.messages as Array<{ role?: string; message?: string }> | undefined;
+            if (Array.isArray(rawMessages) && rawMessages.length > 0) {
+              const parsed = rawMessages
+                .filter((m) => m.message && (m.role === "user" || m.role === "bot" || m.role === "assistant"))
+                .map((m) => ({
+                  role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+                  text: String(m.message),
+                }));
+              if (parsed.length > 0) {
+                syncFromConversation({ sessionId: sid, messages: parsed });
+              }
+            }
           }
         });
 
         vapi.on("error", (err: unknown) => {
+          const msg = getErrorMessage(err);
           console.error("[VAPI Error]", err);
+          setError(msg);
           setState("idle");
         });
 
@@ -148,8 +211,7 @@ export function useVapiSession() {
         await vapi.start({
           model: modelConfig,
           voice: voiceConfig,
-          firstMessage:
-            "Hi there! I'm your AI tutor. I've reviewed your course material. What would you like to learn about today?",
+          firstMessage: firstMessageText,
           transcriber: {
             provider: "deepgram",
             model: "nova-2",
@@ -157,11 +219,13 @@ export function useVapiSession() {
           },
         } as Parameters<typeof vapi.start>[0]);
       } catch (err) {
+        const msg = getErrorMessage(err);
         console.error("[VAPI Start Error]", err);
+        setError(msg);
         setState("idle");
       }
     },
-    [createSession, sendMessage]
+    [createSession, sendMessage, syncFromConversation]
   );
 
   const stop = useCallback(async () => {
@@ -176,5 +240,5 @@ export function useVapiSession() {
     setSessionId(null);
   }, [sessionId, endSession]);
 
-  return { state, sessionId, start, stop };
+  return { state, sessionId, error, start, stop };
 }

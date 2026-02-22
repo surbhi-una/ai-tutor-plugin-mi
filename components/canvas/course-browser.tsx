@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -49,6 +49,8 @@ interface CourseBrowserProps {
   domain: string;
   token: string;
   onMaterialReady: (material: MaterialData) => void;
+  initialCourseId?: string;
+  onCourseSelect?: (courseId: number) => void;
 }
 
 function getItemIcon(type: string) {
@@ -61,6 +63,8 @@ function getItemIcon(type: string) {
       return <MessageSquare className="h-4 w-4 text-primary" />;
     case "Quiz":
       return <HelpCircle className="h-4 w-4 text-primary" />;
+    case "File":
+      return <FileText className="h-4 w-4 text-primary" />;
     default:
       return <FileText className="h-4 w-4 text-muted-foreground" />;
   }
@@ -70,6 +74,8 @@ export function CourseBrowser({
   domain,
   token,
   onMaterialReady,
+  initialCourseId,
+  onCourseSelect,
 }: CourseBrowserProps) {
   const [courses, setCourses] = useState<Course[] | null>(null);
   const [modules, setModules] = useState<Module[] | null>(null);
@@ -77,6 +83,7 @@ export function CourseBrowser({
   const [loading, setLoading] = useState(false);
   const [fetchingContent, setFetchingContent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
 
   async function canvasApi(payload: Record<string, unknown>) {
     const res = await fetch("/api/canvas", {
@@ -110,6 +117,7 @@ export function CourseBrowser({
     setLoading(true);
     setError(null);
     setSelectedCourse(course);
+    onCourseSelect?.(course.id);
     try {
       const data = await canvasApi({
         action: "modules",
@@ -124,6 +132,24 @@ export function CourseBrowser({
       setLoading(false);
     }
   }
+
+  // Restore selected course when returning via Back (initialCourseId from URL)
+  useEffect(() => {
+    if (!initialCourseId) return;
+    const id = parseInt(initialCourseId, 10);
+    if (Number.isNaN(id)) return;
+    if (!courses) {
+      if (!initialLoadDone.current) {
+        initialLoadDone.current = true;
+        loadCourses();
+      }
+      return;
+    }
+    const course = courses.find((c) => c.id === id);
+    if (course && !selectedCourse) {
+      loadModules(course);
+    }
+  }, [initialCourseId, courses, selectedCourse]);
 
   async function selectItem(item: ModuleItem) {
     setFetchingContent(item.id);
@@ -206,6 +232,11 @@ export function CourseBrowser({
           {error && (
             <p className="mb-3 text-sm text-destructive">{error}</p>
           )}
+          {fetchingContent !== null && (
+            <p className="mb-3 text-sm text-muted-foreground">
+              Fetching content...
+            </p>
+          )}
           <ScrollArea className="h-80">
             <div className="flex flex-col gap-3">
               {modules.map((mod) => (
@@ -216,7 +247,7 @@ export function CourseBrowser({
                   <div className="flex flex-col gap-0.5">
                     {mod.items
                       .filter((item) =>
-                        ["Page", "Assignment", "Discussion", "Quiz"].includes(
+                        ["Page", "Assignment", "Discussion", "Quiz", "File"].includes(
                           item.type
                         )
                       )

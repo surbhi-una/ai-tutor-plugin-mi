@@ -55,7 +55,6 @@ export function EngineSelector({
                 <SelectItem value="openai/gpt-4o">GPT-4o</SelectItem>
                 <SelectItem value="openai/gpt-4o-mini">GPT-4o Mini</SelectItem>
                 <SelectItem value="google/gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                <SelectItem value="minimax/MiniMax-M1">MiniMax M1</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -66,6 +65,7 @@ export function EngineSelector({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="openai">OpenAI (recommended)</SelectItem>
                 <SelectItem value="11labs">ElevenLabs</SelectItem>
                 <SelectItem value="minimax">MiniMax Speech-02</SelectItem>
                 <SelectItem value="playht">PlayHT</SelectItem>

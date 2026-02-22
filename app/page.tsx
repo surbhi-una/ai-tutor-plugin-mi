@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { ConnectForm } from "@/components/canvas/connect-form";
 import { CourseBrowser, type MaterialData } from "@/components/canvas/course-browser";
 import { Button } from "@/components/ui/button";
@@ -10,33 +12,76 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mic, BookOpen, Zap, ArrowRight } from "lucide-react";
 
+const STORAGE_KEY = "studyvoice_canvas_connection";
+
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const createMaterial = useMutation(api.materials.create);
   const [connection, setConnection] = useState<{
     domain: string;
     token: string;
   } | null>(null);
 
-  const [pasteContent, setPasteContent] = useState("");
+  // Restore connection when returning with courseId (e.g. from Back on tutor page)
+  const courseIdFromUrl = searchParams.get("courseId");
+  useEffect(() => {
+    if (courseIdFromUrl && !connection) {
+      try {
+        const stored = sessionStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const { domain, token } = JSON.parse(stored).data;
+          if (domain && token) setConnection({ domain, token });
+        }
+      } catch {
+        // Ignore invalid stored data
+      }
+    }
+  }, [courseIdFromUrl]);
 
-  function handleMaterialReady(material: MaterialData) {
-    // Store material in sessionStorage and navigate
-    sessionStorage.setItem("studyvoice_material", JSON.stringify(material));
-    router.push("/tutor");
+  // Persist connection when user connects
+  useEffect(() => {
+    if (connection) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data: connection }));
+    }
+  }, [connection]);
+
+  const [pasteContent, setPasteContent] = useState("");
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  async function handleMaterialReady(material: MaterialData) {
+    if (isNavigating) return;
+    setIsNavigating(true);
+    try {
+      const materialId = await createMaterial({
+        content: material.content,
+        source: "canvas",
+        title: material.title,
+        courseId: material.courseId || undefined,
+        courseName: material.courseName || undefined,
+      });
+      router.push(`/tutor?id=${materialId}`);
+    } catch (err) {
+      console.error("Failed to create material:", err);
+      setIsNavigating(false);
+    }
   }
 
-  function handlePaste() {
-    if (!pasteContent.trim()) return;
-    sessionStorage.setItem(
-      "studyvoice_material",
-      JSON.stringify({
-        title: "Pasted Content",
+  async function handlePaste() {
+    if (!pasteContent.trim() || isNavigating) return;
+    setIsNavigating(true);
+    try {
+      const materialId = await createMaterial({
         content: pasteContent.trim(),
+        source: "paste",
+        title: "Pasted Content",
         courseName: "Manual Input",
-        courseId: "",
-      })
-    );
-    router.push("/tutor");
+      });
+      router.push(`/tutor?id=${materialId}`);
+    } catch (err) {
+      console.error("Failed to create material:", err);
+      setIsNavigating(false);
+    }
   }
 
   return (
@@ -104,6 +149,10 @@ export default function Home() {
                   domain={connection.domain}
                   token={connection.token}
                   onMaterialReady={handleMaterialReady}
+                  initialCourseId={courseIdFromUrl ?? undefined}
+                  onCourseSelect={(id) =>
+                    router.replace(`/?courseId=${id}`, { scroll: false })
+                  }
                 />
               )}
             </TabsContent>
@@ -124,7 +173,7 @@ export default function Home() {
                   />
                   <Button
                     onClick={handlePaste}
-                    disabled={!pasteContent.trim()}
+                    disabled={!pasteContent.trim() || isNavigating}
                     className="w-full"
                   >
                     <ArrowRight className="mr-2 h-4 w-4" />

@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { EngineSelector } from "@/components/tutor/engine-selector";
 import { VoiceButton, type VoiceState } from "@/components/tutor/voice-button";
 import { TranscriptView } from "@/components/tutor/transcript-view";
@@ -24,7 +24,15 @@ function TutorContent() {
 
   const [engine, setEngine] = useState("vapi");
   const [llmProvider, setLlmProvider] = useState("openai/gpt-4o");
-  const [ttsProvider, setTtsProvider] = useState("11labs");
+  const [ttsProvider, setTtsProvider] = useState("openai");
+
+  // Reset invalid VAPI providers (MiniMax LLM was removed - not supported by VAPI)
+  const VAPI_LLM_OPTIONS = ["openai/gpt-4o", "openai/gpt-4o-mini", "google/gemini-2.0-flash"];
+  useEffect(() => {
+    if (engine === "vapi" && !VAPI_LLM_OPTIONS.includes(llmProvider)) {
+      setLlmProvider("openai/gpt-4o");
+    }
+  }, [engine, llmProvider]);
 
   const vapiSession = useVapiSession();
   const speechmaticsSession = useSpeechmaticsSession();
@@ -52,31 +60,72 @@ function TutorContent() {
 
   if (!materialId) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <p className="text-muted-foreground">No material selected</p>
+      <>
+        <header className="flex items-center gap-3 border-b border-border px-4 py-3">
           <Link
             href="/"
-            className="text-sm text-primary hover:underline flex items-center gap-1"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft className="h-3 w-3" />
-            Go back and select content
+            <ArrowLeft className="h-4 w-4" />
+            Back
           </Link>
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <p className="text-muted-foreground">No material selected</p>
+            <Link
+              href="/"
+              className="text-sm text-primary hover:underline flex items-center gap-1"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Go back and select content
+            </Link>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!material) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground">Loading material...</p>
-      </div>
+      <>
+        <header className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Link>
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-muted-foreground">Loading material...</p>
+        </div>
+      </>
     );
   }
 
+  const backHref = material.courseId ? `/?courseId=${material.courseId}` : "/";
+
   return (
-    <div className="flex flex-1 flex-col lg:flex-row">
+    <>
+      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
+        <Link
+          href={backHref}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Link>
+        <div className="h-4 w-px bg-border" />
+        <div className="flex items-center gap-2">
+          <div className="h-6 w-6 flex items-center justify-center rounded bg-primary">
+            <Mic className="h-3 w-3 text-primary-foreground" />
+          </div>
+          <span className="text-sm font-medium text-foreground">AI Tutor</span>
+        </div>
+      </header>
+      <div className="flex flex-1 flex-col lg:flex-row">
       {/* Left panel -- settings & content */}
       <aside className="flex w-full flex-col gap-4 border-b border-border p-4 lg:w-80 lg:border-b-0 lg:border-r">
         <ContentPreview
@@ -98,7 +147,12 @@ function TutorContent() {
       {/* Main area -- voice + transcript */}
       <div className="flex flex-1 flex-col">
         {/* Voice control */}
-        <div className="flex items-center justify-center border-b border-border py-8">
+        <div className="flex flex-col items-center gap-4 border-b border-border py-8">
+          {engine === "vapi" && vapiSession.error && (
+            <p className="text-sm text-destructive text-center px-4 max-w-md">
+              {vapiSession.error}
+            </p>
+          )}
           <VoiceButton
             state={activeSession.state}
             onToggle={handleToggle}
@@ -109,32 +163,13 @@ function TutorContent() {
         <TranscriptView sessionId={activeSession.sessionId} />
       </div>
     </div>
+    </>
   );
 }
 
 export default function TutorPage() {
   return (
     <div className="flex h-screen flex-col bg-background">
-      {/* Header */}
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </Link>
-        <div className="h-4 w-px bg-border" />
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
-            <Mic className="h-3 w-3 text-primary-foreground" />
-          </div>
-          <span className="text-sm font-medium text-foreground">
-            AI Tutor
-          </span>
-        </div>
-      </header>
-
       <Suspense
         fallback={
           <div className="flex flex-1 items-center justify-center">
