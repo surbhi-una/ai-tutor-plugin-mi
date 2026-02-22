@@ -44,6 +44,7 @@ export function useVapiSession(onTranscript: OnTranscript) {
   const start = useCallback(
     async (content: string, llmProvider: string, ttsProvider: string) => {
       setState("connecting");
+        setError(null);
 
       try {
         // Dynamically import to avoid SSR issues
@@ -75,30 +76,48 @@ export function useVapiSession(onTranscript: OnTranscript) {
           messages: [{ role: "system", content: systemPrompt }],
         };
 
-        // Build voice config
+        // Build voice config with fallback to prevent "Meeting has ended" when TTS times out
+        const openaiFallback = { provider: "openai" as const, voiceId: "shimmer" };
         let voiceConfig: Record<string, unknown>;
-        if (ttsProvider === "minimax") {
+        if (ttsProvider === "openai") {
+          voiceConfig = {
+            provider: "openai",
+            voiceId: "shimmer",
+          };
+        } else if (ttsProvider === "minimax") {
           voiceConfig = {
             provider: "minimax",
             voiceId: "Wise_Woman",
             model: "speech-02-turbo",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         } else if (ttsProvider === "playht") {
           voiceConfig = {
             provider: "playht",
             voiceId: "jennifer",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         } else {
           voiceConfig = {
             provider: "11labs",
             voiceId: "sarah",
             model: "eleven_turbo_v2_5",
+            fallbackPlan: { voices: [openaiFallback] },
           };
         }
 
         // Wire up events
+        const firstMessageText =
+          "Hi there! I'm your AI tutor. I've reviewed your course material. What would you like to learn about today?";
+
         vapi.on("call-start", () => {
           setState("listening");
+          // Add assistant's first message to transcript so user sees the greeting
+          sendMessage({
+            sessionId: sid,
+            role: "assistant",
+            text: firstMessageText,
+          });
         });
 
         vapi.on("call-end", () => {
@@ -125,7 +144,9 @@ export function useVapiSession(onTranscript: OnTranscript) {
         });
 
         vapi.on("error", (err: unknown) => {
+          const msg = getErrorMessage(err);
           console.error("[VAPI Error]", err);
+          setError(msg);
           setState("idle");
         });
 
@@ -133,8 +154,7 @@ export function useVapiSession(onTranscript: OnTranscript) {
         await vapi.start({
           model: modelConfig,
           voice: voiceConfig,
-          firstMessage:
-            "Hi there! I'm your AI tutor. I've reviewed your course material. What would you like to learn about today?",
+          firstMessage: firstMessageText,
           transcriber: {
             provider: "deepgram",
             model: "nova-2",
@@ -142,7 +162,9 @@ export function useVapiSession(onTranscript: OnTranscript) {
           },
         } as any);
       } catch (err) {
+        const msg = getErrorMessage(err);
         console.error("[VAPI Start Error]", err);
+        setError(msg);
         setState("idle");
       }
     },

@@ -126,6 +126,11 @@ export const fetchContent = action({
       );
       html = quiz.description ?? "";
       title = quiz.title ?? "";
+    } else if (args.itemType === "File" && args.itemId) {
+      // File content (PDF, text) requires binary fetch + parsing - use web app /api/canvas
+      throw new Error(
+        "File content is supported in the web app. Please open StudyVoice in your browser to study files."
+      );
     } else {
       throw new Error(`Unsupported item type: ${args.itemType}`);
     }

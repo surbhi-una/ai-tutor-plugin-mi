@@ -11,7 +11,7 @@ interface ContentPreviewProps {
 }
 
 export function ContentPreview({ title, content, courseName }: ContentPreviewProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
 
   return (
     <div className="rounded-lg border border-border bg-card">
@@ -45,7 +45,7 @@ export function ContentPreview({ title, content, courseName }: ContentPreviewPro
       </button>
       {expanded && (
         <div className="border-t border-border px-4 py-3">
-          <ScrollArea className="h-48">
+          <ScrollArea className="h-64 max-h-96">
             <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
               {content}
             </p>
