@@ -3,7 +3,10 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConnectForm } from "@/components/canvas/connect-form";
-import { CourseBrowser, type MaterialData } from "@/components/canvas/course-browser";
+import {
+  CourseBrowser,
+  type MaterialData,
+} from "@/components/canvas/course-browser";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mic, BookOpen, Zap, ArrowRight } from "lucide-react";
 
 const STORAGE_KEY = "studyvoice_canvas_connection";
+const MATERIAL_KEY = "studyvoice_material";
 
 function HomeContent() {
   const router = useRouter();
@@ -20,26 +24,25 @@ function HomeContent() {
     token: string;
   } | null>(null);
 
-  // Restore connection when returning with courseId (e.g. from Back on tutor page)
   const courseIdFromUrl = searchParams.get("courseId");
+
   useEffect(() => {
     if (courseIdFromUrl && !connection) {
       try {
         const stored = sessionStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const { domain, token } = JSON.parse(stored).data;
+          const { domain, token } = JSON.parse(stored);
           if (domain && token) setConnection({ domain, token });
         }
       } catch {
-        // Ignore invalid stored data
+        /* ignore */
       }
     }
-  }, [courseIdFromUrl]);
+  }, [courseIdFromUrl, connection]);
 
-  // Persist connection when user connects
   useEffect(() => {
     if (connection) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ data: connection }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(connection));
     }
   }, [connection]);
 
@@ -49,35 +52,40 @@ function HomeContent() {
   function handleMaterialReady(material: MaterialData) {
     if (isNavigating) return;
     setIsNavigating(true);
+    const id = crypto.randomUUID();
     sessionStorage.setItem(
-      "studyvoice_material",
+      MATERIAL_KEY,
       JSON.stringify({
-        title: material.title,
+        id,
         content: material.content,
-        courseName: material.courseName || "Canvas Course",
-        courseId: material.courseId,
+        source: "canvas",
+        title: material.title,
+        courseId: material.courseId || undefined,
+        courseName: material.courseName || undefined,
       })
     );
-    router.push(`/tutor`);
+    router.push(`/tutor?id=${id}`);
   }
 
   function handlePaste() {
     if (!pasteContent.trim() || isNavigating) return;
     setIsNavigating(true);
+    const id = crypto.randomUUID();
     sessionStorage.setItem(
-      "studyvoice_material",
+      MATERIAL_KEY,
       JSON.stringify({
-        title: "Pasted Content",
+        id,
         content: pasteContent.trim(),
+        source: "paste",
+        title: "Pasted Content",
         courseName: "Manual Input",
       })
     );
-    router.push(`/tutor`);
+    router.push(`/tutor?id=${id}`);
   }
 
   return (
     <main className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
@@ -94,7 +102,6 @@ function HomeContent() {
         </div>
       </header>
 
-      {/* Hero */}
       <section className="mx-auto max-w-5xl px-6 py-16">
         <div className="flex flex-col items-center text-center gap-4 mb-12">
           <h1 className="text-4xl font-bold tracking-tight text-foreground text-balance md:text-5xl">
@@ -120,7 +127,6 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* Connection Flow */}
         <div className="mx-auto max-w-lg">
           <Tabs defaultValue="canvas">
             <TabsList className="grid w-full grid-cols-2 bg-secondary">
@@ -177,7 +183,6 @@ function HomeContent() {
         </div>
       </section>
 
-      {/* How it works */}
       <section className="border-t border-border bg-card">
         <div className="mx-auto max-w-5xl px-6 py-12">
           <h2 className="text-center text-xl font-semibold text-card-foreground mb-8">
@@ -225,7 +230,13 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-background"><p className="text-muted-foreground">Loading...</p></div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="text-muted-foreground">Loading...</div>
+        </div>
+      }
+    >
       <HomeContent />
     </Suspense>
   );
