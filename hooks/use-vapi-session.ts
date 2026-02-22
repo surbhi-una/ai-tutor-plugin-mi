@@ -1,9 +1,6 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import type { VoiceState } from "@/components/tutor/voice-button";
 
 const TUTOR_SYSTEM_PROMPT = `You are a friendly, expert AI tutor. The student is studying the following material from their course.
@@ -23,14 +20,13 @@ RULES:
 - Keep responses concise (2-3 sentences for voice)
 - Start by greeting the student and asking what they'd like to learn about from this material`;
 
-export function useVapiSession() {
-  const [state, setState] = useState<VoiceState>("idle");
-  const [sessionId, setSessionId] = useState<Id<"sessions"> | null>(null);
-  const vapiRef = useRef<ReturnType<typeof import("@vapi-ai/web").default.prototype.constructor> | null>(null);
+type OnTranscript = (role: "user" | "assistant", text: string) => void;
 
-  const createSession = useMutation(api.sessions.create);
-  const endSession = useMutation(api.sessions.end);
-  const sendMessage = useMutation(api.messages.send);
+export function useVapiSession(onTranscript: OnTranscript) {
+  const [state, setState] = useState<VoiceState>("idle");
+  const vapiRef = useRef<any>(null);
+  const onTranscriptRef = useRef(onTranscript);
+  onTranscriptRef.current = onTranscript;
 
   // Cleanup on unmount
   useEffect(() => {
@@ -46,24 +42,10 @@ export function useVapiSession() {
   }, []);
 
   const start = useCallback(
-    async (
-      materialId: Id<"materials">,
-      content: string,
-      llmProvider: string,
-      ttsProvider: string
-    ) => {
+    async (content: string, llmProvider: string, ttsProvider: string) => {
       setState("connecting");
 
       try {
-        // Create session in Convex
-        const sid = await createSession({
-          materialId,
-          engine: "vapi",
-          llmProvider,
-          ttsProvider,
-        });
-        setSessionId(sid);
-
         // Dynamically import to avoid SSR issues
         const VapiModule = await import("@vapi-ai/web");
         const Vapi = VapiModule.default;
@@ -77,7 +59,10 @@ export function useVapiSession() {
         vapiRef.current = vapi;
 
         // Build assistant config
-        const systemPrompt = TUTOR_SYSTEM_PROMPT.replace("{CONTENT}", content.slice(0, 15000));
+        const systemPrompt = TUTOR_SYSTEM_PROMPT.replace(
+          "{CONTENT}",
+          content.slice(0, 15000)
+        );
 
         // Parse LLM provider
         const [provider, modelName] = llmProvider.includes("/")
@@ -129,13 +114,13 @@ export function useVapiSession() {
         });
 
         vapi.on("message", (msg: Record<string, unknown>) => {
-          // Log transcript messages to Convex
-          if (msg.type === "transcript" && msg.transcriptType === "final" && msg.transcript) {
-            sendMessage({
-              sessionId: sid,
-              role: msg.role as string ?? "user",
-              text: msg.transcript as string,
-            });
+          if (
+            msg.type === "transcript" &&
+            msg.transcriptType === "final" &&
+            msg.transcript
+          ) {
+            const role = (msg.role as string) === "assistant" ? "assistant" : "user";
+            onTranscriptRef.current(role, msg.transcript as string);
           }
         });
 
@@ -155,13 +140,13 @@ export function useVapiSession() {
             model: "nova-2",
             language: "en",
           },
-        } as Parameters<typeof vapi.start>[0]);
+        } as any);
       } catch (err) {
         console.error("[VAPI Start Error]", err);
         setState("idle");
       }
     },
-    [createSession, sendMessage]
+    []
   );
 
   const stop = useCallback(async () => {
@@ -169,12 +154,8 @@ export function useVapiSession() {
       vapiRef.current.stop();
       vapiRef.current = null;
     }
-    if (sessionId) {
-      await endSession({ id: sessionId });
-    }
     setState("idle");
-    setSessionId(null);
-  }, [sessionId, endSession]);
+  }, []);
 
-  return { state, sessionId, start, stop };
+  return { state, start, stop };
 }

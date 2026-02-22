@@ -1,22 +1,22 @@
 "use client";
 
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { User, Bot } from "lucide-react";
 
-interface TranscriptViewProps {
-  sessionId: Id<"sessions"> | null;
+export interface TranscriptMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  timestamp: number;
 }
 
-export function TranscriptView({ sessionId }: TranscriptViewProps) {
-  const messages = useQuery(
-    api.messages.listBySession,
-    sessionId ? { sessionId } : "skip"
-  );
+interface TranscriptViewProps {
+  messages: TranscriptMessage[];
+}
+
+export function TranscriptView({ messages }: TranscriptViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export function TranscriptView({ sessionId }: TranscriptViewProps) {
     }
   }, [messages]);
 
-  if (!sessionId) {
+  if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
         Start a voice session to see the transcript
@@ -36,9 +36,9 @@ export function TranscriptView({ sessionId }: TranscriptViewProps) {
   return (
     <ScrollArea className="flex-1" ref={scrollRef}>
       <div className="flex flex-col gap-3 p-4">
-        {messages?.map((msg) => (
+        {messages.map((msg) => (
           <div
-            key={msg._id}
+            key={msg.id}
             className={cn(
               "flex gap-2.5 max-w-[85%]",
               msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
@@ -70,11 +70,6 @@ export function TranscriptView({ sessionId }: TranscriptViewProps) {
             </div>
           </div>
         ))}
-        {(!messages || messages.length === 0) && (
-          <p className="text-center text-sm text-muted-foreground py-8">
-            Waiting for conversation to begin...
-          </p>
-        )}
       </div>
     </ScrollArea>
   );

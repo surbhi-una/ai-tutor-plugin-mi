@@ -1,33 +1,54 @@
 "use client";
 
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { useState, Suspense } from "react";
 import { EngineSelector } from "@/components/tutor/engine-selector";
-import { VoiceButton, type VoiceState } from "@/components/tutor/voice-button";
-import { TranscriptView } from "@/components/tutor/transcript-view";
+import { VoiceButton } from "@/components/tutor/voice-button";
+import { TranscriptView, type TranscriptMessage } from "@/components/tutor/transcript-view";
 import { ContentPreview } from "@/components/tutor/content-preview";
 import { useVapiSession } from "@/hooks/use-vapi-session";
 import { useSpeechmaticsSession } from "@/hooks/use-speechmatics-session";
 import Link from "next/link";
 import { ArrowLeft, Mic } from "lucide-react";
 
+interface MaterialData {
+  title: string;
+  content: string;
+  courseName: string;
+  courseId?: string;
+}
+
 function TutorContent() {
   const searchParams = useSearchParams();
-  const materialId = searchParams.get("id") as Id<"materials"> | null;
-  const material = useQuery(
-    api.materials.getById,
-    materialId ? { id: materialId } : "skip"
-  );
+  const [material, setMaterial] = useState<MaterialData | null>(null);
+  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
 
   const [engine, setEngine] = useState("vapi");
   const [llmProvider, setLlmProvider] = useState("openai/gpt-4o");
   const [ttsProvider, setTtsProvider] = useState("11labs");
 
-  const vapiSession = useVapiSession();
-  const speechmaticsSession = useSpeechmaticsSession();
+  // Load material from sessionStorage
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("studyvoice_material");
+      if (raw) {
+        setMaterial(JSON.parse(raw));
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, []);
+
+  // Callback for voice hooks to add transcript messages
+  function onTranscript(role: "user" | "assistant", text: string) {
+    setMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random()}`, role, text, timestamp: Date.now() },
+    ]);
+  }
+
+  const vapiSession = useVapiSession(onTranscript);
+  const speechmaticsSession = useSpeechmaticsSession(onTranscript);
 
   const activeSession = engine === "vapi" ? vapiSession : speechmaticsSession;
   const isActive = activeSession.state !== "idle";
@@ -37,20 +58,20 @@ function TutorContent() {
 
     if (engine === "vapi") {
       if (vapiSession.state === "idle") {
-        vapiSession.start(materialId!, material.content, llmProvider, ttsProvider);
+        vapiSession.start(material.content, llmProvider, ttsProvider);
       } else {
         vapiSession.stop();
       }
     } else {
       if (speechmaticsSession.state === "idle") {
-        speechmaticsSession.start(materialId!, material.content);
+        speechmaticsSession.start(material.content);
       } else {
         speechmaticsSession.stop();
       }
     }
   }
 
-  if (!materialId) {
+  if (!material) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
@@ -63,14 +84,6 @@ function TutorContent() {
             Go back and select content
           </Link>
         </div>
-      </div>
-    );
-  }
-
-  if (!material) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground">Loading material...</p>
       </div>
     );
   }
@@ -106,7 +119,7 @@ function TutorContent() {
         </div>
 
         {/* Transcript */}
-        <TranscriptView sessionId={activeSession.sessionId} />
+        <TranscriptView messages={messages} />
       </div>
     </div>
   );

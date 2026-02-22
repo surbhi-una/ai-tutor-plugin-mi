@@ -1,12 +1,27 @@
 "use client";
 
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { type ReactNode } from "react";
 
-const convex = new ConvexReactClient(
-  process.env.NEXT_PUBLIC_CONVEX_URL as string
-);
+let ConvexProviderComponent: React.ComponentType<{ children: ReactNode }> | null = null;
+
+// Only initialize Convex if the URL is set
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+if (convexUrl) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ConvexProvider, ConvexReactClient } = require("convex/react");
+    const client = new ConvexReactClient(convexUrl);
+    ConvexProviderComponent = ({ children }: { children: ReactNode }) => (
+      <ConvexProvider client={client}>{children}</ConvexProvider>
+    );
+  } catch {
+    // Convex not available, skip
+  }
+}
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  if (ConvexProviderComponent) {
+    return <ConvexProviderComponent>{children}</ConvexProviderComponent>;
+  }
+  return <>{children}</>;
 }
